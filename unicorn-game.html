@@ -1,0 +1,522 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Unicorn Adventure</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 20px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            font-family: Arial, sans-serif;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            min-height: 100vh;
+        }
+        
+        #gameContainer {
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 15px;
+            padding: 20px;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+        }
+        
+        #gameCanvas {
+            border: 3px solid #fff;
+            border-radius: 10px;
+            background: #1a1a2e;
+        }
+        
+        #gameInfo {
+            display: flex;
+            justify-content: space-between;
+            color: white;
+            font-size: 18px;
+            font-weight: bold;
+            margin-bottom: 10px;
+            text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.5);
+        }
+        
+        #gameOver {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: rgba(0, 0, 0, 0.9);
+            color: white;
+            padding: 30px;
+            border-radius: 15px;
+            text-align: center;
+            display: none;
+        }
+        
+        button {
+            background: linear-gradient(45deg, #ff6b6b, #ee5a24);
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 25px;
+            cursor: pointer;
+            font-size: 16px;
+            margin-top: 10px;
+        }
+        
+        button:hover {
+            transform: scale(1.05);
+        }
+    </style>
+</head>
+<body>
+    <div id="gameContainer">
+        <div id="gameInfo">
+            <div>Level: <span id="level">1</span></div>
+            <div>Score: <span id="score">0</span></div>
+            <div>Lives: <span id="lives">3</span></div>
+            <div>Time: <span id="timer">200</span>s</div>
+        </div>
+        <canvas id="gameCanvas" width="800" height="600"></canvas>
+    </div>
+    
+    <div id="gameOver">
+        <h2 id="gameOverText">Game Over!</h2>
+        <p id="finalScore">Final Score: 0</p>
+        <button onclick="restartGame()">Play Again</button>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+        
+        // Game state
+        let gameState = {
+            level: 1,
+            score: 0,
+            lives: 3,
+            timer: 200,
+            gameRunning: true,
+            levelComplete: false
+        };
+        
+        // Game objects
+        let unicorn = {
+            x: 40,
+            y: 40,
+            size: 20,
+            speed: 3,
+            direction: { x: 0, y: 0 }
+        };
+        
+        let enemies = [];
+        let coins = [];
+        let hearts = [];
+        let walls = [];
+        
+        // Initialize maze walls
+        function createMaze() {
+            walls = [];
+            const wallData = [
+                // Outer walls
+                {x: 0, y: 0, width: 800, height: 20},
+                {x: 0, y: 580, width: 800, height: 20},
+                {x: 0, y: 0, width: 20, height: 600},
+                {x: 780, y: 0, width: 20, height: 600},
+                
+                // Inner maze walls
+                {x: 100, y: 100, width: 20, height: 200},
+                {x: 200, y: 60, width: 20, height: 150},
+                {x: 300, y: 150, width: 150, height: 20},
+                {x: 500, y: 80, width: 20, height: 180},
+                {x: 600, y: 200, width: 120, height: 20},
+                {x: 150, y: 350, width: 200, height: 20},
+                {x: 450, y: 400, width: 20, height: 120},
+                {x: 650, y: 350, width: 20, height: 150},
+                {x: 80, y: 480, width: 180, height: 20},
+                {x: 400, y: 300, width: 100, height: 20}
+            ];
+            
+            wallData.forEach(wall => walls.push(wall));
+        }
+        
+        // Initialize collectibles
+        function createCollectibles() {
+            coins = [];
+            hearts = [];
+            
+            // Generate coins
+            for (let i = 0; i < 15 + gameState.level * 3; i++) {
+                let coin;
+                do {
+                    coin = {
+                        x: Math.random() * 720 + 40,
+                        y: Math.random() * 520 + 40,
+                        size: 8,
+                        collected: false
+                    };
+                } while (isColliding(coin, walls) || isNearUnicorn(coin));
+                coins.push(coin);
+            }
+            
+            // Generate hearts
+            for (let i = 0; i < 3; i++) {
+                let heart;
+                do {
+                    heart = {
+                        x: Math.random() * 720 + 40,
+                        y: Math.random() * 520 + 40,
+                        size: 12,
+                        collected: false
+                    };
+                } while (isColliding(heart, walls) || isNearUnicorn(heart));
+                hearts.push(heart);
+            }
+        }
+        
+        // Initialize enemies
+        function createEnemies() {
+            enemies = [];
+            const enemyCount = Math.min(1 + gameState.level, 6);
+            
+            for (let i = 0; i < enemyCount; i++) {
+                let enemy;
+                do {
+                    enemy = {
+                        x: Math.random() * 720 + 40,
+                        y: Math.random() * 520 + 40,
+                        size: 18,
+                        speed: 1 + gameState.level * 0.3,
+                        color: `hsl(${Math.random() * 360}, 70%, 50%)`
+                    };
+                } while (isColliding(enemy, walls) || isNearUnicorn(enemy));
+                enemies.push(enemy);
+            }
+        }
+        
+        // Collision detection
+        function isColliding(obj, obstacles) {
+            return obstacles.some(obstacle => 
+                obj.x < obstacle.x + obstacle.width &&
+                obj.x + obj.size > obstacle.x &&
+                obj.y < obstacle.y + obstacle.height &&
+                obj.y + obj.size > obstacle.y
+            );
+        }
+        
+        function isNearUnicorn(obj) {
+            const distance = Math.sqrt(
+                Math.pow(obj.x - unicorn.x, 2) + Math.pow(obj.y - unicorn.y, 2)
+            );
+            return distance < 100;
+        }
+        
+        // Draw functions
+        function drawUnicorn() {
+            ctx.save();
+            ctx.translate(unicorn.x + unicorn.size/2, unicorn.y + unicorn.size/2);
+            
+            // Body
+            ctx.fillStyle = '#FFB6C1';
+            ctx.fillRect(-unicorn.size/2, -unicorn.size/2, unicorn.size, unicorn.size);
+            
+            // Horn
+            ctx.fillStyle = '#FFD700';
+            ctx.beginPath();
+            ctx.moveTo(0, -unicorn.size/2);
+            ctx.lineTo(-4, -unicorn.size/2 - 8);
+            ctx.lineTo(4, -unicorn.size/2 - 8);
+            ctx.closePath();
+            ctx.fill();
+            
+            // Eyes
+            ctx.fillStyle = '#000';
+            ctx.fillRect(-6, -6, 3, 3);
+            ctx.fillRect(3, -6, 3, 3);
+            
+            // Mane
+            ctx.fillStyle = '#FF69B4';
+            ctx.fillRect(-unicorn.size/2 - 2, -unicorn.size/2, 4, unicorn.size);
+            ctx.fillRect(unicorn.size/2 - 2, -unicorn.size/2, 4, unicorn.size);
+            
+            ctx.restore();
+        }
+        
+        function drawEnemies() {
+            enemies.forEach(enemy => {
+                ctx.fillStyle = enemy.color;
+                ctx.fillRect(enemy.x, enemy.y, enemy.size, enemy.size);
+                
+                // Eyes
+                ctx.fillStyle = '#fff';
+                ctx.fillRect(enemy.x + 3, enemy.y + 3, 4, 4);
+                ctx.fillRect(enemy.x + enemy.size - 7, enemy.y + 3, 4, 4);
+                
+                ctx.fillStyle = '#000';
+                ctx.fillRect(enemy.x + 4, enemy.y + 4, 2, 2);
+                ctx.fillRect(enemy.x + enemy.size - 6, enemy.y + 4, 2, 2);
+            });
+        }
+        
+        function drawCollectibles() {
+            // Draw coins
+            coins.forEach(coin => {
+                if (!coin.collected) {
+                    ctx.fillStyle = '#FFD700';
+                    ctx.beginPath();
+                    ctx.arc(coin.x, coin.y, coin.size, 0, Math.PI * 2);
+                    ctx.fill();
+                    
+                    ctx.fillStyle = '#FFA500';
+                    ctx.beginPath();
+                    ctx.arc(coin.x, coin.y, coin.size - 2, 0, Math.PI * 2);
+                    ctx.fill();
+                }
+            });
+            
+            // Draw hearts
+            hearts.forEach(heart => {
+                if (!heart.collected) {
+                    ctx.fillStyle = '#FF1493';
+                    ctx.beginPath();
+                    ctx.arc(heart.x - 4, heart.y - 2, 6, 0, Math.PI * 2);
+                    ctx.arc(heart.x + 4, heart.y - 2, 6, 0, Math.PI * 2);
+                    ctx.fill();
+                    
+                    ctx.beginPath();
+                    ctx.moveTo(heart.x, heart.y + 8);
+                    ctx.lineTo(heart.x - 8, heart.y);
+                    ctx.lineTo(heart.x + 8, heart.y);
+                    ctx.closePath();
+                    ctx.fill();
+                }
+            });
+        }
+        
+        function drawWalls() {
+            ctx.fillStyle = '#4169E1';
+            walls.forEach(wall => {
+                ctx.fillRect(wall.x, wall.y, wall.width, wall.height);
+            });
+        }
+        
+        // Game logic
+        function moveUnicorn() {
+            const newX = unicorn.x + unicorn.direction.x * unicorn.speed;
+            const newY = unicorn.y + unicorn.direction.y * unicorn.speed;
+            
+            const testUnicorn = { x: newX, y: newY, size: unicorn.size };
+            
+            if (!isColliding(testUnicorn, walls)) {
+                unicorn.x = Math.max(0, Math.min(canvas.width - unicorn.size, newX));
+                unicorn.y = Math.max(0, Math.min(canvas.height - unicorn.size, newY));
+            }
+        }
+        
+        function moveEnemies() {
+            enemies.forEach(enemy => {
+                // AI: Move towards unicorn
+                const dx = unicorn.x - enemy.x;
+                const dy = unicorn.y - enemy.y;
+                const distance = Math.sqrt(dx * dx + dy * dy);
+                
+                if (distance > 0) {
+                    const moveX = (dx / distance) * enemy.speed;
+                    const moveY = (dy / distance) * enemy.speed;
+                    
+                    const newX = enemy.x + moveX;
+                    const newY = enemy.y + moveY;
+                    
+                    const testEnemy = { x: newX, y: newY, size: enemy.size };
+                    
+                    if (!isColliding(testEnemy, walls)) {
+                        enemy.x = newX;
+                        enemy.y = newY;
+                    }
+                }
+            });
+        }
+        
+        function checkCollisions() {
+            // Check coin collection
+            coins.forEach(coin => {
+                if (!coin.collected) {
+                    const distance = Math.sqrt(
+                        Math.pow(unicorn.x + unicorn.size/2 - coin.x, 2) + 
+                        Math.pow(unicorn.y + unicorn.size/2 - coin.y, 2)
+                    );
+                    if (distance < unicorn.size/2 + coin.size) {
+                        coin.collected = true;
+                        gameState.score += 10;
+                    }
+                }
+            });
+            
+            // Check heart collection
+            hearts.forEach(heart => {
+                if (!heart.collected) {
+                    const distance = Math.sqrt(
+                        Math.pow(unicorn.x + unicorn.size/2 - heart.x, 2) + 
+                        Math.pow(unicorn.y + unicorn.size/2 - heart.y, 2)
+                    );
+                    if (distance < unicorn.size/2 + heart.size) {
+                        heart.collected = true;
+                        gameState.lives++;
+                        gameState.score += 50;
+                    }
+                }
+            });
+            
+            // Check enemy collision
+            enemies.forEach(enemy => {
+                const distance = Math.sqrt(
+                    Math.pow(unicorn.x - enemy.x, 2) + 
+                    Math.pow(unicorn.y - enemy.y, 2)
+                );
+                if (distance < unicorn.size) {
+                    gameState.lives--;
+                    if (gameState.lives <= 0) {
+                        endGame();
+                    } else {
+                        // Reset unicorn position
+                        unicorn.x = 40;
+                        unicorn.y = 40;
+                    }
+                }
+            });
+        }
+        
+        function checkLevelComplete() {
+            const allCoinsCollected = coins.every(coin => coin.collected);
+            if (allCoinsCollected && !gameState.levelComplete) {
+                gameState.levelComplete = true;
+                gameState.level++;
+                gameState.timer = 200;
+                gameState.score += 100;
+                
+                setTimeout(() => {
+                    initLevel();
+                }, 1000);
+            }
+        }
+        
+        function updateTimer() {
+            if (gameState.timer > 0) {
+                gameState.timer--;
+            } else {
+                gameState.lives--;
+                if (gameState.lives <= 0) {
+                    endGame();
+                } else {
+                    gameState.timer = 200;
+                }
+            }
+        }
+        
+        function updateUI() {
+            document.getElementById('level').textContent = gameState.level;
+            document.getElementById('score').textContent = gameState.score;
+            document.getElementById('lives').textContent = gameState.lives;
+            document.getElementById('timer').textContent = gameState.timer;
+        }
+        
+        function endGame() {
+            gameState.gameRunning = false;
+            document.getElementById('finalScore').textContent = `Final Score: ${gameState.score}`;
+            document.getElementById('gameOver').style.display = 'block';
+        }
+        
+        function restartGame() {
+            gameState = {
+                level: 1,
+                score: 0,
+                lives: 3,
+                timer: 200,
+                gameRunning: true,
+                levelComplete: false
+            };
+            
+            unicorn.x = 40;
+            unicorn.y = 40;
+            unicorn.direction = { x: 0, y: 0 };
+            
+            document.getElementById('gameOver').style.display = 'none';
+            initLevel();
+        }
+        
+        function initLevel() {
+            gameState.levelComplete = false;
+            createMaze();
+            createCollectibles();
+            createEnemies();
+        }
+        
+        // Game loop
+        let lastTime = 0;
+        let timerCounter = 0;
+        
+        function gameLoop(currentTime) {
+            if (!gameState.gameRunning) return;
+            
+            const deltaTime = currentTime - lastTime;
+            lastTime = currentTime;
+            
+            // Update timer every second
+            timerCounter += deltaTime;
+            if (timerCounter >= 1000) {
+                updateTimer();
+                timerCounter = 0;
+            }
+            
+            // Clear canvas
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            
+            // Update game objects
+            moveUnicorn();
+            moveEnemies();
+            checkCollisions();
+            checkLevelComplete();
+            
+            // Draw everything
+            drawWalls();
+            drawCollectibles();
+            drawUnicorn();
+            drawEnemies();
+            
+            // Update UI
+            updateUI();
+            
+            requestAnimationFrame(gameLoop);
+        }
+        
+        // Input handling
+        const keys = {};
+        
+        document.addEventListener('keydown', (e) => {
+            keys[e.key] = true;
+            
+            if (keys['ArrowUp'] || keys['w']) {
+                unicorn.direction = { x: 0, y: -1 };
+            } else if (keys['ArrowDown'] || keys['s']) {
+                unicorn.direction = { x: 0, y: 1 };
+            } else if (keys['ArrowLeft'] || keys['a']) {
+                unicorn.direction = { x: -1, y: 0 };
+            } else if (keys['ArrowRight'] || keys['d']) {
+                unicorn.direction = { x: 1, y: 0 };
+            }
+        });
+        
+        document.addEventListener('keyup', (e) => {
+            keys[e.key] = false;
+            
+            if (!keys['ArrowUp'] && !keys['ArrowDown'] && !keys['ArrowLeft'] && !keys['ArrowRight'] &&
+                !keys['w'] && !keys['s'] && !keys['a'] && !keys['d']) {
+                unicorn.direction = { x: 0, y: 0 };
+            }
+        });
+        
+        // Initialize game
+        initLevel();
+        requestAnimationFrame(gameLoop);
+    </script>
+</body>
+</html>
