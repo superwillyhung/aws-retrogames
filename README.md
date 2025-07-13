@@ -1,6 +1,6 @@
 # aws-retrogames
 
-As part of the AWS builders challenge, builders have been asked to build retro games as part of the challenge. So I have started a post on my steps and observations. 
+As part of the AWS builders challenge 2025, builders have been asked to build retro games as part of the challenge. So I have started a post on my steps and observations. 
 
 Steps to get started: 
 
